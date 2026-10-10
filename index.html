@@ -2,14 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Silent Colors AR — Rear Camera</title>
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071a36;font-family:Arial,sans-serif}
-/* A full-width portrait AR viewport. MindAR controls the camera video's
-   actual dimensions and positioning: do NOT override its inline styles. */
-#arScene{position:fixed;inset:0;width:100%;height:100%;z-index:1}
+/* Use the default responsive AR viewport. MindAR controls camera video sizing. */
+#arScene{position:fixed;inset:0;z-index:1}
 #start{position:fixed;inset:0;z-index:50;background:#071a36;color:white;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:22px;text-align:center}
 #start img{width:min(55vw,240px);max-height:38dvh;object-fit:contain;border-radius:12px}
 h1{margin:0;font-size:28px}p{margin:0;max-width:370px;line-height:1.5}
@@ -19,7 +18,7 @@ button:disabled{opacity:.6}
 #controls{display:none;position:fixed;z-index:40;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 12px);pointer-events:none;align-items:flex-start;justify-content:space-between;gap:12px}
 #controls button{pointer-events:auto;font-size:15px;padding:12px 15px}
 #hint{max-width:55%;padding:10px;border-radius:10px;color:white;background:#000a;text-align:right;font-size:12px;line-height:1.4}
-/* For debugging camera permission without hiding the preview */
+/* Runtime notices */
 #notice{display:none;position:fixed;bottom:calc(env(safe-area-inset-bottom) + 16px);left:16px;right:16px;z-index:45;color:white;text-align:center;background:#000a;padding:10px;border-radius:10px;font-size:12px}
 </style>
 <script>
@@ -46,13 +45,13 @@ if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
 <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
 </head>
 <body>
+<!-- Keep video outside a-assets: slow MP4 downloads must not block scene loaded. -->
+<video id="artVideo" src="./assets/silent-colors-video.mp4" muted playsinline webkit-playsinline loop preload="none" crossorigin="anonymous" style="display:none"></video>
 <a-scene id="arScene" embedded
  mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
  renderer="colorManagement: true; antialias: true; alpha: true"
  vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
- <a-assets timeout="20000">
-  <video id="artVideo" src="./assets/silent-colors-video.mp4" muted playsinline webkit-playsinline loop preload="auto" crossorigin="anonymous"></video>
- </a-assets>
+
  <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
  <a-entity id="painting" mindar-image-target="targetIndex: 0">
   <a-video src="#artVideo" position="0 0 0.01" width="1" height="1.23" material="shader: flat; side: double"></a-video>
@@ -76,11 +75,35 @@ const controls=document.querySelector('#controls');
 const hint=document.querySelector('#hint');
 const art=document.querySelector('#artVideo');
 const painting=document.querySelector('#painting');
-function loaded(el){if(el.hasLoaded)return Promise.resolve();return new Promise((resolve,reject)=>{let t=setTimeout(()=>reject(new Error('Scene loading timed out')),20000);el.addEventListener('loaded',()=>{clearTimeout(t);resolve()},{once:true});});}
+function loaded(el){
+ if(el.hasLoaded)return Promise.resolve();
+ return new Promise((resolve,reject)=>{
+  const t=setTimeout(()=>reject(new Error('AR scene did not initialize. Check that A-Frame and MindAR scripts loaded and reload the page.')),30000);
+  el.addEventListener('loaded',()=>{clearTimeout(t);resolve()},{once:true});
+ });
+}
+async function checkFile(url,label){
+ try{
+  const r=await fetch(url,{method:'HEAD',cache:'no-store'});
+  if(!r.ok)throw new Error(label+' missing (HTTP '+r.status+'): '+url);
+ }catch(err){
+  // Some hosts refuse HEAD; try GET to distinguish that from missing files.
+  if(String(err.message).includes('HTTP '))throw err;
+  const r=await fetch(url,{cache:'no-store'});
+  if(!r.ok)throw new Error(label+' missing (HTTP '+r.status+'): '+url);
+ }
+}
+window.addEventListener('error',e=>{
+ if(!scene.hasLoaded)status.textContent='Library or scene error: '+(e.message||'Check network and reload');
+});
 go.addEventListener('click',async()=>{
  go.disabled=true;status.textContent='Preparing rear camera...';
  try{
+  if(!window.AFRAME)throw new Error('A-Frame library unavailable. Check internet and reload.');
   await loaded(scene);
+  status.textContent='Checking image target...';
+  await checkFile('./targets.mind','Image target');
+  status.textContent='Opening back camera...';
   const system=scene.systems['mindar-image-system'];
   if(!system)throw new Error('MindAR initialization failed');
   // Start from the tap gesture; iOS allows muted video autoplay after interaction.
@@ -92,10 +115,12 @@ go.addEventListener('click',async()=>{
   const facing=track?.getSettings?.().facingMode;
   if(facing==='user')throw new Error('Front camera selected. Close other camera apps and reload.');
   start.style.display='none';controls.style.display='flex';
+  if(art.readyState===0)art.load();
  }catch(e){console.error(e);status.textContent='AR failed: '+(e.message||String(e));go.disabled=false;}
 });
-painting.addEventListener('targetFound',async()=>{hint.textContent='Painting found — playing video';try{await art.play()}catch(e){hint.textContent='Tap the screen to enable video';}});
+painting.addEventListener('targetFound',async()=>{hint.textContent='Painting found — playing video';try{await art.play()}catch(e){hint.textContent='Video could not play. Check assets/silent-colors-video.mp4';}});
 painting.addEventListener('targetLost',()=>{art.pause();hint.textContent='Point the back camera at the painting';});
+art.addEventListener('error',()=>{hint.textContent='Video file error: check assets/silent-colors-video.mp4';});
 document.querySelector('#close').addEventListener('click',()=>location.reload());
 </script>
 </body>
