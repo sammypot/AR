@@ -1,0 +1,249 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#07192f">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Silent Colors | Augmented Reality</title>
+
+  <!-- Keep these compatible versions: the previous working AR viewer used them. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.147.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.147.0/examples/jsm/",
+      "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+    }
+  }
+  </script>
+
+  <style>
+    * { box-sizing: border-box; }
+    :root { color-scheme: dark; }
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Arial, sans-serif; background: #000; color: #fff; }
+    button { font: inherit; cursor: pointer; border: 0; -webkit-tap-highlight-color: transparent; }
+    button:disabled { opacity: .65; cursor: wait; }
+    [hidden] { display: none !important; }
+
+    /* The MindAR camera AND rendering surface occupy the full visible viewport. */
+    #stage { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; margin: 0; padding: 0; background: #000; overflow: hidden; z-index: 1; }
+    #stage video { position: absolute !important; top: 50% !important; left: 50% !important; right: auto !important; bottom: auto !important; margin: 0 !important; width: 100% !important; height: 100% !important; min-width: 100% !important; min-height: 100% !important; object-fit: cover !important; transform: translate(-50%, -50%) !important; z-index: 1 !important; visibility: visible !important; opacity: 1 !important; }
+    #stage canvas { position: absolute !important; inset: 0 !important; width: 100% !important; height: 100% !important; display: block !important; background: transparent !important; z-index: 2 !important; pointer-events: none; }
+
+    /* This is your actual Silent Colors MP4, fullscreen after the painting is detected.
+       'cover' intentionally crops the edges to eliminate black bars on tall phones. */
+    #arVideo { position: fixed; inset: 0; width: 100vw; height: 100vh; height: 100dvh; object-fit: cover; object-position: center; z-index: 5; background: #000; opacity: 0; visibility: hidden; pointer-events: none; transition: opacity .18s ease; }
+    #arVideo.is-visible { opacity: 1; visibility: visible; }
+
+    #home { position: fixed; inset: 0; z-index: 20; overflow-y: auto; display: flex; align-items: center; justify-content: center; text-align: center; padding: max(20px, env(safe-area-inset-top)) 22px max(20px, env(safe-area-inset-bottom)); background: radial-gradient(circle at 50% 10%, #153963, #071b36 58%, #061326); }
+    #homeInner { width: 100%; max-width: 430px; margin: auto; }
+    #painting { display: block; width: min(54vw, 265px); max-height: 41dvh; margin: 0 auto 22px; height: auto; object-fit: contain; border-radius: 16px; box-shadow: 0 12px 32px #0008; }
+    #home h1 { margin: 0 0 12px; font-size: clamp(28px, 7vw, 39px); letter-spacing: -.035em; }
+    #home p { font-size: 16px; line-height: 1.5; color: #ddeafa; margin: 0 auto 24px; }
+    #startBtn { width: 100%; padding: 17px 18px; border-radius: 17px; background: #fff; color: #092744; font-weight: 750; font-size: 20px; min-height: 60px; }
+    #status { font-size: 13px; color: #e3f1ff; min-height: 24px; padding: 15px 4px 0; line-height: 1.45; overflow-wrap: anywhere; }
+    #errorDetail { font-size: 12px; white-space: pre-wrap; word-break: break-word; background: #0005; padding: 12px; border-radius: 10px; text-align: left; margin: 10px 0 0; }
+    #home small { font-size: 12px; display: block; color: #b4cce6; margin-top: 14px; }
+
+    #hud { position: fixed; inset: 0; z-index: 10; display: none; pointer-events: none; }
+    #exitBtn { position: absolute; top: calc(env(safe-area-inset-top) + 12px); left: 15px; pointer-events: auto; color: #fff; background: #071b36cd; border: 1px solid #ffffff52; border-radius: 999px; padding: 11px 18px; font-size: 15px; font-weight: 700; min-height: 44px; box-shadow: 0 4px 12px #0004; }
+    #scanHint { position: absolute; left: 18px; right: 18px; bottom: calc(env(safe-area-inset-bottom) + 24px); border-radius: 16px; background: #071b36bf; border: 1px solid #ffffff33; padding: 13px 15px; text-align: center; font-size: 15px; line-height: 1.4; box-shadow: 0 4px 16px #0006; }
+    #controls { position: absolute; bottom: calc(env(safe-area-inset-bottom) + 22px); left: 15px; right: 15px; display: flex; justify-content: center; gap: 12px; align-items: center; pointer-events: none; }
+    #controls button { pointer-events: auto; min-height: 45px; border-radius: 999px; background: #ffffffea; color: #071b36; padding: 11px 17px; font-size: 14px; font-weight: 700; }
+  </style>
+</head>
+<body>
+  <div id="stage" aria-label="Live camera"></div>
+
+  <!-- This video is a fullscreen image-triggered layer, NOT a floating 3D rectangle. -->
+  <video id="arVideo" src="./assets/silent-colors-video.mp4" preload="auto" playsinline webkit-playsinline muted loop></video>
+
+  <section id="home">
+    <div id="homeInner">
+      <img id="painting" src="./assets/silent-colors-target.jpg" alt="Silent Colors painting">
+      <h1>Silent Colors AR</h1>
+      <p>Scan the painting to bring it to life. Once it is detected, your video plays across the whole screen.</p>
+      <button id="startBtn" disabled>Loading AR...</button>
+      <div id="status" aria-live="polite">Preparing your AR experience...</div>
+      <div id="errorDetail" hidden></div>
+      <small>Use Safari on iPhone. Camera access and internet are required.</small>
+    </div>
+  </section>
+
+  <div id="hud">
+    <button id="exitBtn" type="button">← Exit AR</button>
+    <div id="scanHint">Point the back camera at the Silent Colors painting</div>
+    <div id="controls">
+      <button id="playBtn" type="button" hidden>▶ Play video</button>
+      <button id="soundBtn" type="button" hidden>🔊 Enable sound</button>
+    </div>
+  </div>
+
+  <script type="module">
+  const $ = id => document.getElementById(id);
+  const home = $('home'), stage = $('stage'), hud = $('hud'), startBtn = $('startBtn');
+  const status = $('status'), errorDetail = $('errorDetail'), arVideo = $('arVideo');
+  const scanHint = $('scanHint'), playBtn = $('playBtn'), soundBtn = $('soundBtn');
+  let MindARThree = null;
+  let mindar = null;
+  let starting = false, started = false, isTargetFound = false, libraryError = null;
+  let lossTimer = null;
+
+  function showError(message, err) {
+    console.error(message, err);
+    status.textContent = message;
+    errorDetail.textContent = err ? String(err.message || err) : '';
+    errorDetail.hidden = !err;
+    startBtn.disabled = false;
+    startBtn.textContent = 'Retry AR';
+  }
+
+  function videoOn() {
+    arVideo.classList.add('is-visible');
+    scanHint.hidden = true;
+    soundBtn.hidden = false;
+    soundBtn.textContent = arVideo.muted ? '🔊 Enable sound' : '🔇 Mute sound';
+  }
+
+  function videoOff() {
+    arVideo.pause();
+    arVideo.classList.remove('is-visible');
+    scanHint.hidden = false;
+    playBtn.hidden = true;
+    soundBtn.hidden = true;
+  }
+
+  function paintFound() {
+    clearTimeout(lossTimer); lossTimer = null;
+    if (isTargetFound) return;
+    isTargetFound = true;
+    videoOn();
+    arVideo.currentTime = 0;
+    arVideo.play().then(() => { playBtn.hidden = true; }).catch(err => {
+      console.warn('iPhone blocked automatic video playback:', err);
+      playBtn.hidden = false;
+    });
+  }
+
+  function paintLost() {
+    clearTimeout(lossTimer);
+    // Small delay prevents flickering if detection is briefly lost for a frame.
+    lossTimer = setTimeout(() => {
+      lossTimer = null;
+      isTargetFound = false;
+      videoOff();
+    }, 850);
+  }
+
+  function initTracker() {
+    if (mindar) return mindar;
+    if (!MindARThree) throw new Error('AR library did not load.');
+    mindar = new MindARThree({
+      container: stage,
+      imageTargetSrc: './targets.mind',
+      uiLoading: 'no', uiScanning: 'no', uiError: 'no',
+      filterMinCF: 0.001, filterBeta: 100
+    });
+    const anchor = mindar.addAnchor(0);
+    anchor.onTargetFound = paintFound;
+    anchor.onTargetLost = paintLost;
+    // No mesh needed: the recognized painting triggers a true fullscreen video.
+    mindar.renderer.setClearColor(0x000000, 0);
+    mindar.renderer.domElement.style.background = 'transparent';
+    mindar.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    return mindar;
+  }
+
+  async function verifyFiles() {
+    // Avoid silently showing a blank camera when an upload is missing.
+    for (const path of ['./targets.mind', './assets/silent-colors-video.mp4']) {
+      const response = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+      if (!response.ok) throw new Error(`${path} returned HTTP ${response.status}. Check the filename on GitHub.`);
+    }
+  }
+
+  async function startAR() {
+    if (starting || started) return;
+    if (!MindARThree) { location.reload(); return; }
+    starting = true;
+    startBtn.disabled = true; startBtn.textContent = 'Opening camera...';
+    status.textContent = 'Starting camera and tracking the painting...';
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      starting = false; showError('Camera access requires the HTTPS GitHub Pages address in Safari.'); return;
+    }
+    // Warm up muted inline playback in a user-initiated gesture (important on iPhone).
+    arVideo.muted = true; arVideo.playsInline = true;
+    try {
+      const p = arVideo.play();
+      if (p) p.then(() => { if (!isTargetFound) { arVideo.pause(); arVideo.currentTime = 0; } }).catch(() => {});
+    } catch (_) {}
+    try {
+      await verifyFiles();
+      const tracker = initTracker();
+      await tracker.start();
+      tracker.renderer.setAnimationLoop(() => tracker.renderer.render(tracker.scene, tracker.camera));
+      started = true;
+      home.style.display = 'none';
+      hud.style.display = 'block';
+      scanHint.hidden = false;
+      status.textContent = 'Camera ready.';
+      // Safari/MindAR sometimes leaves the camera stream oddly sized on rotation.
+      window.dispatchEvent(new Event('resize'));
+    } catch (err) {
+      console.error('AR start error:', err);
+      showError('Cannot start AR: ' + String(err.message || err), err);
+    } finally {
+      starting = false;
+      if (!started) { startBtn.disabled = false; startBtn.textContent = 'Try again'; }
+    }
+  }
+
+  function exitAR() {
+    clearTimeout(lossTimer); lossTimer = null;
+    isTargetFound = false;
+    videoOff();
+    arVideo.muted = true;
+    try { mindar?.renderer?.setAnimationLoop(null); } catch (_) {}
+    try { mindar?.stop(); } catch (err) { console.warn(err); }
+    started = false; starting = false;
+    hud.style.display = 'none';
+    home.style.display = 'flex';
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start AR';
+    status.textContent = 'Ready to scan again.';
+  }
+
+  $('exitBtn').addEventListener('click', exitAR);
+  startBtn.addEventListener('click', startAR);
+  playBtn.addEventListener('click', () => {
+    arVideo.play().then(() => { playBtn.hidden = true; }).catch(err => showError('Could not play video.', err));
+  });
+  soundBtn.addEventListener('click', () => {
+    arVideo.muted = !arVideo.muted;
+    soundBtn.textContent = arVideo.muted ? '🔊 Enable sound' : '🔇 Mute sound';
+    if (isTargetFound && arVideo.paused) arVideo.play().catch(() => { playBtn.hidden = false; });
+  });
+  window.addEventListener('pagehide', () => {
+    clearTimeout(lossTimer);
+    arVideo.pause();
+    try { mindar?.stop(); } catch (_) {}
+  });
+
+  (async () => {
+    try {
+      const mod = await import('mindar-image-three');
+      MindARThree = mod.MindARThree;
+      if (!MindARThree) throw new Error('MindARThree was not exported by the library.');
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start AR';
+      status.textContent = 'Ready. Tap Start AR and scan the painting.';
+    } catch (err) {
+      libraryError = err;
+      showError('Could not load AR libraries. Try Safari on Wi-Fi.', err);
+    }
+  })();
+  </script>
+</body>
+</html>
