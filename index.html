@@ -1,0 +1,455 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#061b32">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Silent Colors AR - Floating Animation</title>
+
+<!-- MindAR 1.2.5 image tracking + the compatible Three.js module. -->
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+    "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+  }
+}
+</script>
+
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    width:100%; height:100%; margin:0; overflow:hidden;
+    background:#000; color:#fff;
+    font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  }
+  button { font:inherit; border:0; cursor:pointer; -webkit-tap-highlight-color:transparent; }
+  [hidden] { display:none !important; }
+
+  /* Leave the camera's sizing/offsets to MindAR so tracking stays aligned. */
+  #stage {
+    position:fixed; inset:0; width:100vw; height:100vh; height:100dvh;
+    overflow:hidden; z-index:1; background:#000;
+  }
+  #stage canvas { background:transparent !important; pointer-events:none; }
+
+  /* Source for the 3D texture, NOT a full-screen video overlay.
+     Keep a tiny video element in the viewport for iOS Safari playback. */
+  #arVideo {
+    position:fixed; left:0; top:0; z-index:11;
+    width:2px; height:2px; opacity:0.01;
+    pointer-events:none;
+  }
+
+  #welcome {
+    position:fixed; inset:0; z-index:20; overflow-y:auto;
+    padding:max(20px,env(safe-area-inset-top)) 22px max(20px,env(safe-area-inset-bottom));
+    display:flex; align-items:center; justify-content:center; text-align:center;
+    background:radial-gradient(circle at 50% 10%,#183b63,#081d38 57%,#061427);
+  }
+  #welcomeInner { width:100%; max-width:430px; margin:auto; }
+  #artwork {
+    width:min(58vw,280px); max-height:42dvh; height:auto;
+    display:block; object-fit:contain; margin:0 auto 21px;
+    border-radius:15px; box-shadow:0 16px 36px #0007;
+  }
+  h1 { margin:0 0 12px; font-size:clamp(30px,7vw,40px); letter-spacing:-.035em; }
+  #intro { margin:0 auto 24px; font-size:16px; color:#dceafa; line-height:1.5; }
+  #startBtn {
+    width:100%; min-height:61px; border-radius:18px;
+    background:#fff; color:#072444; font-size:21px; font-weight:750; padding:16px;
+  }
+  #startBtn:disabled { opacity:.65; }
+  #loadStatus {
+    margin:16px 0 0; min-height:22px; font-size:13px;
+    color:#c7dff5; line-height:1.5; overflow-wrap:anywhere;
+  }
+  #details {
+    white-space:pre-wrap; overflow-wrap:anywhere; text-align:left;
+    margin-top:12px; padding:9px; border-radius:9px;
+    background:#0005; font-size:12px;
+  }
+  #version { display:block; margin-top:15px; font-size:12px; color:#91b0cf; }
+
+  #hud { position:fixed; inset:0; z-index:10; display:none; pointer-events:none; }
+  #exitBtn {
+    position:absolute; top:calc(env(safe-area-inset-top) + 14px); left:16px;
+    min-height:46px; padding:11px 18px; border-radius:100px;
+    background:#071b36d9; color:#fff; border:1px solid #ffffff50;
+    font-size:16px; font-weight:700; pointer-events:auto;
+  }
+  #hint {
+    position:absolute; bottom:calc(env(safe-area-inset-bottom) + 24px);
+    left:18px; right:18px; border-radius:15px;
+    background:#081d38d9; padding:14px;
+    line-height:1.45; font-size:15px; text-align:center;
+  }
+  #soundBtn {
+    position:absolute; bottom:calc(env(safe-area-inset-bottom) + 22px);
+    right:16px; min-height:45px; border-radius:100px;
+    background:#ffffffed; color:#071b36;
+    font-size:14px; font-weight:700; padding:11px 16px;
+    pointer-events:auto;
+  }
+</style>
+</head>
+<body>
+  <div id="stage" aria-label="Live back-camera image-tracked AR view"></div>
+
+  <!-- KEEP the same video file already present in your GitHub assets folder.
+       playsinline and muted are important for iPhone automatic playback. -->
+  <video id="arVideo" preload="auto" muted loop playsinline webkit-playsinline>
+    <source src="./assets/silent-colors-video.mp4?v=7" type="video/mp4">
+  </video>
+
+  <main id="welcome">
+    <div id="welcomeInner">
+      <img id="artwork" src="./assets/silent-colors-target.jpg" alt="Silent Colors target painting">
+      <h1>Silent Colors AR</h1>
+      <p id="intro">Point your back camera at this painting. The animation will appear beside it and follow as you move.</p>
+      <button id="startBtn" type="button" disabled>Loading AR...</button>
+      <div id="loadStatus" aria-live="polite">Preparing image tracking...</div>
+      <div id="details" hidden></div>
+      <small id="version">Version 7 - floating image-tracked animation</small>
+    </div>
+  </main>
+
+  <div id="hud">
+    <button id="exitBtn" type="button">&larr; Exit AR</button>
+    <div id="hint" aria-live="polite">Point the back camera at the Silent Colors painting.</div>
+    <button id="soundBtn" type="button" hidden>Enable sound</button>
+  </div>
+
+<script type="module">
+  const el = (id) => document.getElementById(id);
+  const stage = el('stage');
+  const welcome = el('welcome');
+  const hud = el('hud');
+  const artwork = el('artwork');
+  const startBtn = el('startBtn');
+  const loadStatus = el('loadStatus');
+  const details = el('details');
+  const video = el('arVideo');
+  const hint = el('hint');
+  const soundBtn = el('soundBtn');
+
+  // ADJUST HERE if you want the animation bigger or closer to the painting.
+  // MindAR uses 1.0 as the physical width of the tracked target picture.
+  const FLOATING_WIDTH = 0.62;       // 0.62 = 62% of target painting's width
+  const MAX_FLOATING_HEIGHT = 0.84; // cap tall (portrait) animations
+  const GAP_FROM_PAINTING = 0.055; // small gap between animation and painting
+  const SIDE = 'left';             // change to 'right' if desired
+
+  const TARGET_FILE = './targets.mind';
+  const TARGET_IMAGE = './assets/silent-colors-target.jpg';
+  const MOVIE_FILE = './assets/silent-colors-video.mp4?v=7';
+
+  let THREE, MindARThree, tracker, anchor, movieMesh, floatingGroup;
+  let started = false, starting = false, found = false;
+  let lostTimer = null, playPromise = null, needsTap = false;
+  let playbackGeneration = 0;
+
+  // Muted + inline playback permits autoplay on most iPhones.
+  video.muted = true;
+  video.defaultMuted = true;
+  video.playsInline = true;
+  video.setAttribute('muted', '');
+  video.setAttribute('playsinline', '');
+  video.setAttribute('webkit-playsinline', '');
+
+  function showHint(message) {
+    hint.textContent = message;
+    hint.hidden = false;
+  }
+
+  function failAtHome(message, error) {
+    console.error(message, error);
+    loadStatus.textContent = message;
+    details.textContent = error ? String(error.message || error) : '';
+    details.hidden = !error;
+    startBtn.disabled = false;
+    startBtn.textContent = 'Try AR again';
+  }
+
+  // This geometry is really IN the image target's 3D coordinate system.
+  // Because it belongs to anchor.group, it follows translation, scale and rotation.
+  function placeAnimationNearTarget() {
+    if (!movieMesh) return;
+
+    const targetAspect = artwork.naturalWidth > 0
+      ? (artwork.naturalHeight / artwork.naturalWidth)
+      : 1;
+    const videoAspect = video.videoWidth > 0 && video.videoHeight > 0
+      ? (video.videoWidth / video.videoHeight)
+      : 1;
+
+    const panelWidth = Math.min(FLOATING_WIDTH, MAX_FLOATING_HEIGHT * videoAspect);
+    const panelHeight = panelWidth / videoAspect;
+    const sign = SIDE === 'right' ? 1 : -1;
+
+    // The plane is aligned near the BOTTOM edge of the artwork, just outside it.
+    const x = sign * (0.5 + GAP_FROM_PAINTING + panelWidth / 2);
+    const y = (-targetAspect / 2) + (panelHeight / 2);
+
+    movieMesh.scale.set(panelWidth, panelHeight, 1);
+    movieMesh.position.set(x, y, 0);
+  }
+
+  function initializeTracker() {
+    if (tracker) return tracker;
+
+    tracker = new MindARThree({
+      container: stage,
+      imageTargetSrc: TARGET_FILE,
+      uiLoading: 'no', uiScanning: 'no', uiError: 'no',
+      maxTrack: 1,
+      filterMinCF: 0.001,
+      filterBeta: 30
+    });
+
+    anchor = tracker.addAnchor(0);
+    anchor.onTargetFound = onFound;
+    anchor.onTargetLost = onLost;
+
+    // Turn the original MP4 into a texture, NOT a second full-screen layer.
+    const movieTexture = new THREE.VideoTexture(video);
+    movieTexture.colorSpace = THREE.SRGBColorSpace;
+    movieTexture.minFilter = THREE.LinearFilter;
+    movieTexture.magFilter = THREE.LinearFilter;
+    movieTexture.generateMipmaps = false;
+
+    const movieMaterial = new THREE.MeshBasicMaterial({
+      map: movieTexture,
+      side: THREE.DoubleSide,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false
+    });
+
+    // Unit plane: actual size is chosen from the real MP4 aspect ratio.
+    movieMesh = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), movieMaterial);
+    movieMesh.frustumCulled = false;
+
+    // Give it a little separation from the painting surface for a floating feel.
+    floatingGroup = new THREE.Group();
+    floatingGroup.position.z = 0.065;
+    floatingGroup.add(movieMesh);
+    anchor.group.add(floatingGroup);
+    placeAnimationNearTarget();
+
+    tracker.renderer.setClearColor(0x000000, 0);
+    tracker.renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    tracker.renderer.domElement.style.background = 'transparent';
+
+    return tracker;
+  }
+
+  // Adapt the plane to a square, landscape, or vertical video.
+  video.addEventListener('loadedmetadata', placeAnimationNearTarget);
+  artwork.addEventListener('load', placeAnimationNearTarget);
+
+  function stopMovie() {
+    playbackGeneration += 1;
+    needsTap = false;
+    try { video.pause(); } catch (_) {}
+    video.muted = true;
+    video.defaultMuted = true;
+    soundBtn.hidden = true;
+    soundBtn.textContent = 'Enable sound';
+    showHint('Point your camera at the painting. Keep the full artwork in view.');
+  }
+
+  function movieFailure(error) {
+    console.error('Could not play AR animation', error, video.currentSrc);
+    soundBtn.hidden = true;
+
+    if (error?.name === 'NotAllowedError') {
+      needsTap = true;
+      showHint('Painting detected. Tap anywhere once to allow video playback on this iPhone.');
+    } else {
+      needsTap = false;
+      showHint('Could not load the animation. Check the MP4 file and H.264 video format.');
+    }
+  }
+
+  async function beginPlayback() {
+    if (!started || !found || !movieMesh) return;
+    if (playPromise) return;
+
+    const currentGeneration = playbackGeneration;
+    // Always start automatically MUTED. A user tap is required to enable audio.
+    video.muted = true;
+    video.defaultMuted = true;
+    soundBtn.textContent = 'Enable sound';
+    showHint('Painting detected. Starting the floating animation...');
+
+    try {
+      playPromise = video.play();
+      await playPromise;
+
+      if (currentGeneration !== playbackGeneration || !started || !found) {
+        video.pause();
+        return;
+      }
+
+      needsTap = false;
+      hint.hidden = true;
+      soundBtn.hidden = false;
+    } catch (error) {
+      if (started && found && currentGeneration === playbackGeneration) movieFailure(error);
+    } finally {
+      playPromise = null;
+    }
+  }
+
+  function onFound() {
+    clearTimeout(lostTimer);
+    lostTimer = null;
+    if (found) return;
+
+    found = true;
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      try { video.currentTime = 0; } catch (_) {}
+    }
+    if (started) void beginPlayback();
+  }
+
+  function onLost() {
+    clearTimeout(lostTimer);
+    // Avoid pausing the animation after one missed tracking frame.
+    lostTimer = setTimeout(() => {
+      found = false;
+      stopMovie();
+    }, 650);
+  }
+
+  async function assertAssetsExist() {
+    // GitHub Pages supports HTTPS HEAD; this gives understandable file errors.
+    for (const path of [TARGET_FILE, TARGET_IMAGE, MOVIE_FILE]) {
+      const response = await fetch(path, { method: 'HEAD', cache: 'no-store' });
+      if (!response.ok) throw new Error(path + ' returned HTTP ' + response.status);
+    }
+  }
+
+  async function startAR() {
+    if (starting || started) return;
+    if (!THREE || !MindARThree) {
+      failAtHome('AR libraries are not ready. Reload the page with internet access.');
+      return;
+    }
+    if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+      failAtHome('Use an HTTPS GitHub Pages link and allow camera access.');
+      return;
+    }
+
+    starting = true;
+    startBtn.disabled = true;
+    startBtn.textContent = 'Opening camera...';
+    loadStatus.textContent = 'Checking the animation, target, and camera...';
+    details.hidden = true;
+    video.muted = true;
+    video.defaultMuted = true;
+    video.load();
+
+    try {
+      await assertAssetsExist();
+      const ar = initializeTracker();
+      await ar.start();
+
+      ar.renderer.setAnimationLoop(() => {
+        // A gentle in/out floating motion along the painting's surface normal.
+        if (floatingGroup) {
+          floatingGroup.position.z = 0.065 + 0.012 * Math.sin(performance.now() / 950);
+        }
+        ar.renderer.render(ar.scene, ar.camera);
+      });
+
+      started = true;
+      welcome.style.display = 'none';
+      hud.style.display = 'block';
+      showHint('Point your camera at the painting. Keep the full artwork in view.');
+      if (found) void beginPlayback();
+      window.dispatchEvent(new Event('resize'));
+    } catch (error) {
+      console.error('AR failed to start', error);
+      try { await tracker?.stop(); } catch (_) {}
+      failAtHome('Cannot start AR. Check your GitHub files and camera access.', error);
+    } finally {
+      starting = false;
+      if (!started) {
+        startBtn.disabled = false;
+        startBtn.textContent = 'Try AR again';
+      }
+    }
+  }
+
+  async function exitAR() {
+    clearTimeout(lostTimer);
+    lostTimer = null;
+    found = false;
+    started = false;
+    stopMovie();
+
+    try { tracker?.renderer?.setAnimationLoop(null); } catch (_) {}
+    try { await tracker?.stop(); } catch (error) { console.warn('Camera stop:', error); }
+
+    hud.style.display = 'none';
+    welcome.style.display = 'flex';
+    startBtn.disabled = false;
+    startBtn.textContent = 'Start AR';
+    loadStatus.textContent = 'Ready to scan again.';
+  }
+
+  startBtn.addEventListener('click', startAR);
+  el('exitBtn').addEventListener('click', () => { void exitAR(); });
+
+  soundBtn.addEventListener('click', () => {
+    if (!started || !found) return;
+    video.muted = !video.muted;
+    video.defaultMuted = video.muted;
+    soundBtn.textContent = video.muted ? 'Enable sound' : 'Mute sound';
+    if (video.paused) void beginPlayback();
+  });
+
+  // No Play button. Safari's autoplay fallback needs only one screen tap.
+  document.addEventListener('pointerdown', () => {
+    if (!needsTap || !started || !found) return;
+    needsTap = false;
+    void beginPlayback();
+  });
+
+  video.addEventListener('error', () => {
+    if (started && found) {
+      movieFailure(new Error('Media error code ' + (video.error?.code ?? 'unknown')));
+    }
+  });
+
+  window.addEventListener('pagehide', () => {
+    clearTimeout(lostTimer);
+    video.pause();
+    try { tracker?.stop(); } catch (_) {}
+  });
+
+  // Download the libraries before enabling Start AR.
+  (async () => {
+    try {
+      const modules = await Promise.all([
+        import('three'),
+        import('mindar-image-three')
+      ]);
+      THREE = modules[0];
+      MindARThree = modules[1].MindARThree;
+      if (!THREE?.VideoTexture || !MindARThree) throw new Error('AR modules missing');
+      startBtn.disabled = false;
+      startBtn.textContent = 'Start AR';
+      loadStatus.textContent = 'Ready. Aim the rear camera at the painting.';
+    } catch (error) {
+      failAtHome('Could not load AR libraries. Check your internet connection.', error);
+    }
+  })();
+</script>
+</body>
+</html>
