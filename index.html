@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Silent Colors AR — Rear Camera</title>
+<style>
+*{box-sizing:border-box}
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071a36;font-family:Arial,sans-serif}
+/* A full-width portrait AR viewport. MindAR controls the camera video's
+   actual dimensions and positioning: do NOT override its inline styles. */
+#arScene{position:fixed;inset:0;width:100%;height:100%;z-index:1}
+#start{position:fixed;inset:0;z-index:50;background:#071a36;color:white;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:22px;text-align:center}
+#start img{width:min(55vw,240px);max-height:38dvh;object-fit:contain;border-radius:12px}
+h1{margin:0;font-size:28px}p{margin:0;max-width:370px;line-height:1.5}
+button{border:0;border-radius:14px;padding:15px 25px;font-size:18px;font-weight:700;color:#071a36;background:#fff}
+button:disabled{opacity:.6}
+#status{max-width:380px;font-size:13px;line-height:1.5;overflow-wrap:anywhere;color:#e0e7f3}
+#controls{display:none;position:fixed;z-index:40;left:12px;right:12px;top:calc(env(safe-area-inset-top) + 12px);pointer-events:none;align-items:flex-start;justify-content:space-between;gap:12px}
+#controls button{pointer-events:auto;font-size:15px;padding:12px 15px}
+#hint{max-width:55%;padding:10px;border-radius:10px;color:white;background:#000a;text-align:right;font-size:12px;line-height:1.4}
+/* For debugging camera permission without hiding the preview */
+#notice{display:none;position:fixed;bottom:calc(env(safe-area-inset-bottom) + 16px);left:16px;right:16px;z-index:45;color:white;text-align:center;background:#000a;padding:10px;border-radius:10px;font-size:12px}
+</style>
+<script>
+// Force the outward-facing rear camera on iPhone. This runs BEFORE MindAR loads.
+// Only change video camera requests; leave unrelated media requests unchanged.
+if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
+ const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+ navigator.mediaDevices.getUserMedia=async function(constraints){
+  if(!constraints || !constraints.video)return original(constraints);
+  const other=typeof constraints.video==='object'?constraints.video:{};
+  const rear={...constraints,video:{...other,facingMode:{exact:'environment'}}};
+  try{return await original(rear)}
+  catch(err){
+   // Some iOS browsers do not support 'exact'; still prefer the rear camera.
+   if(err.name==='OverconstrainedError'||err.name==='NotFoundError'){
+    return original({...constraints,video:{...other,facingMode:{ideal:'environment'}}});
+   }
+   throw err;
+  }
+ };
+}
+</script>
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+</head>
+<body>
+<a-scene id="arScene" embedded
+ mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+ renderer="colorManagement: true; antialias: true; alpha: true"
+ vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+ <a-assets timeout="20000">
+  <video id="artVideo" src="./assets/silent-colors-video.mp4" muted playsinline webkit-playsinline loop preload="auto" crossorigin="anonymous"></video>
+ </a-assets>
+ <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+ <a-entity id="painting" mindar-image-target="targetIndex: 0">
+  <a-video src="#artVideo" position="0 0 0.01" width="1" height="1.23" material="shader: flat; side: double"></a-video>
+ </a-entity>
+</a-scene>
+<div id="start">
+ <img src="./assets/silent-colors-target.jpg" alt="Silent Colors artwork">
+ <h1>Silent Colors AR</h1>
+ <p>Tap Start AR, then aim the <strong>back camera</strong> at the painting.</p>
+ <button id="go">Start AR</button>
+ <div id="status">Use Safari or Chrome on your phone. Internet connection required.</div>
+</div>
+<div id="controls"><button id="close">Close AR</button><span id="hint">Point the back camera at the painting</span></div>
+<div id="notice"></div>
+<script>
+const scene=document.querySelector('#arScene');
+const start=document.querySelector('#start');
+const go=document.querySelector('#go');
+const status=document.querySelector('#status');
+const controls=document.querySelector('#controls');
+const hint=document.querySelector('#hint');
+const art=document.querySelector('#artVideo');
+const painting=document.querySelector('#painting');
+function loaded(el){if(el.hasLoaded)return Promise.resolve();return new Promise((resolve,reject)=>{let t=setTimeout(()=>reject(new Error('Scene loading timed out')),20000);el.addEventListener('loaded',()=>{clearTimeout(t);resolve()},{once:true});});}
+go.addEventListener('click',async()=>{
+ go.disabled=true;status.textContent='Preparing rear camera...';
+ try{
+  await loaded(scene);
+  const system=scene.systems['mindar-image-system'];
+  if(!system)throw new Error('MindAR initialization failed');
+  // Start from the tap gesture; iOS allows muted video autoplay after interaction.
+  art.play().then(()=>{art.pause();art.currentTime=0}).catch(()=>{});
+  await system.start();
+  // Verify the selected camera when supported by the browser.
+  const preview=[...document.querySelectorAll('video')].find(v=>v!==art&&v.srcObject);
+  const track=preview?.srcObject?.getVideoTracks()?.[0];
+  const facing=track?.getSettings?.().facingMode;
+  if(facing==='user')throw new Error('Front camera selected. Close other camera apps and reload.');
+  start.style.display='none';controls.style.display='flex';
+ }catch(e){console.error(e);status.textContent='AR failed: '+(e.message||String(e));go.disabled=false;}
+});
+painting.addEventListener('targetFound',async()=>{hint.textContent='Painting found — playing video';try{await art.play()}catch(e){hint.textContent='Tap the screen to enable video';}});
+painting.addEventListener('targetLost',()=>{art.pause();hint.textContent='Point the back camera at the painting';});
+document.querySelector('#close').addEventListener('click',()=>location.reload());
+</script>
+</body>
+</html>
