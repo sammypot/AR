@@ -7,8 +7,10 @@
 <style>
 *{box-sizing:border-box}
 html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#071a36;font-family:Arial,sans-serif}
-/* Use the default responsive AR viewport. MindAR controls camera video sizing. */
-#arScene{position:fixed;inset:0;z-index:1}
+/* Default responsive viewport. Make MindAR's live feed visible behind the transparent AR canvas. */
+#arScene{position:fixed;inset:0;width:100%;height:100%;z-index:1;background:transparent!important}
+#arScene canvas{background:transparent!important}
+video.mindar-camera-feed{position:fixed!important;top:0!important;left:0!important;width:100vw!important;height:100dvh!important;object-fit:cover!important;display:block!important;visibility:visible!important;opacity:1!important;z-index:0!important}
 #start{position:fixed;inset:0;z-index:50;background:#071a36;color:white;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;padding:22px;text-align:center}
 #start img{width:min(55vw,240px);max-height:38dvh;object-fit:contain;border-radius:12px}
 h1{margin:0;font-size:28px}p{margin:0;max-width:370px;line-height:1.5}
@@ -29,13 +31,12 @@ if(navigator.mediaDevices && navigator.mediaDevices.getUserMedia){
  navigator.mediaDevices.getUserMedia=async function(constraints){
   if(!constraints || !constraints.video)return original(constraints);
   const other=typeof constraints.video==='object'?constraints.video:{};
-  const rear={...constraints,video:{...other,facingMode:{exact:'environment'}}};
+  const {deviceId,...withoutDeviceId}=other;
+  const rear={...constraints,video:{...withoutDeviceId,facingMode:{exact:'environment'}}};
   try{return await original(rear)}
   catch(err){
-   // Some iOS browsers do not support 'exact'; still prefer the rear camera.
-   if(err.name==='OverconstrainedError'||err.name==='NotFoundError'){
-    return original({...constraints,video:{...other,facingMode:{ideal:'environment'}}});
-   }
+   // Never silently fall back to the front-facing camera.
+   if(err.name==='OverconstrainedError'||err.name==='NotFoundError')throw new Error('Rear camera unavailable. Allow camera access in Safari and reload.');
    throw err;
   }
  };
@@ -75,6 +76,19 @@ const controls=document.querySelector('#controls');
 const hint=document.querySelector('#hint');
 const art=document.querySelector('#artVideo');
 const painting=document.querySelector('#painting');
+const notice=document.querySelector('#notice');
+function showNotice(message){notice.textContent=message;notice.style.display='block';}
+function findCameraVideo(){return [...document.querySelectorAll('video')].find(v=>v!==art&&v.srcObject&&v.srcObject.getVideoTracks().length);}
+function revealCameraVideo(){
+ const video=findCameraVideo();
+ if(!video)return null;
+ video.classList.add('mindar-camera-feed');
+ // Retain the positioning and crop that MindAR calculates for tracking where possible.
+ video.style.setProperty('z-index','0','important');
+ video.style.setProperty('visibility','visible','important');
+ video.style.setProperty('opacity','1','important');
+ return video;
+}
 function loaded(el){
  if(el.hasLoaded)return Promise.resolve();
  return new Promise((resolve,reject)=>{
@@ -110,11 +124,20 @@ go.addEventListener('click',async()=>{
   art.play().then(()=>{art.pause();art.currentTime=0}).catch(()=>{});
   await system.start();
   // Verify the selected camera when supported by the browser.
-  const preview=[...document.querySelectorAll('video')].find(v=>v!==art&&v.srcObject);
+  const preview=revealCameraVideo();
   const track=preview?.srcObject?.getVideoTracks()?.[0];
   const facing=track?.getSettings?.().facingMode;
-  if(facing==='user')throw new Error('Front camera selected. Close other camera apps and reload.');
+  if(facing==='user')throw new Error('Front camera selected. The rear camera is required.');
+  if(!preview)showNotice('AR started but the camera video is missing. Please reload in Safari.');
+  else {
+   preview.setAttribute('playsinline',''); preview.muted=true;
+   try{await preview.play()}catch(e){showNotice('Camera preview could not play: '+e.message)}
+   const settings=track?.getSettings?.()||{};
+   showNotice('Camera: '+(settings.facingMode==='environment'?'Back camera':(settings.facingMode||'Facing not reported')));
+   setTimeout(()=>{if(notice.textContent.startsWith('Camera:'))notice.style.display='none'},4500);
+  }
   start.style.display='none';controls.style.display='flex';
+  setTimeout(revealCameraVideo,750);
   if(art.readyState===0)art.load();
  }catch(e){console.error(e);status.textContent='AR failed: '+(e.message||String(e));go.disabled=false;}
 });
