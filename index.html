@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#061b32">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Silent Colors AR - Version 9</title>
+<title>Silent Colors AR - Version 10</title>
 
 <!-- Three.js and MindAR: loaded from the internet when this page opens. -->
 <script type="importmap">
@@ -42,7 +42,7 @@
      Its pixels are displayed in the AR mesh, not here. */
   #arVideo {
     position: fixed; z-index: 2; left: 0; top: 0;
-    width: 20px; height: 20px; opacity: .015;
+    width: 2px; height: 2px; opacity: .015;
     pointer-events: none;
   }
 
@@ -100,7 +100,7 @@
   <!-- Same file path as your existing GitHub repository.
        Use H.264 MP4 (yuv420p) for iPhone Safari; muted autoplay is supported. -->
   <video id="arVideo" muted autoplay loop playsinline webkit-playsinline preload="auto" crossorigin="anonymous">
-    <source src="./assets/silent-colors-video.mp4?v=9" type="video/mp4">
+    <source src="./assets/silent-colors-video.mp4?v=10" type="video/mp4">
   </video>
 
   <main id="welcome">
@@ -111,7 +111,7 @@
       <button id="startBtn" type="button" disabled>Loading AR...</button>
       <div id="loadStatus" aria-live="polite">Loading image tracking...</div>
       <div id="details" hidden></div>
-      <small id="version">Version 9 - fixed Three.js module imports / floating AR</small>
+      <small id="version">Version 10 - restart animation at 0:00 on every image detection</small>
     </div>
   </main>
 
@@ -137,7 +137,7 @@
   const FLOAT_WIDTH = 0.48;       // 48% of the painting width
   const GAP_FROM_TARGET = 0.04;   // close to the painting, without covering it
   const FLOAT_SIDE = 'left';      // change to 'right' if preferred
-  const MAX_HEIGHT_RATIO = 0.43; // relative to target image height
+  const MAX_HEIGHT_RATIO = 0.73; // relative to target image height
 
   // Remove the MP4's BLACK background (a regular MP4 contains no transparency).
   // Lower CUT_DARK to preserve darker animation details; raise to hide dark borders.
@@ -146,7 +146,7 @@
 
   const TARGETS_FILE = './targets.mind';
   const TARGET_IMAGE_FILE = './assets/silent-colors-target.jpg';
-  const VIDEO_FILE = './assets/silent-colors-video.mp4?v=9';
+  const VIDEO_FILE = './assets/silent-colors-video.mp4?v=10';
 
   let THREE, MindARThree, mindar, anchor, movieMesh, movieTexture;
   let isStarting = false, isStarted = false, targetFound = false;
@@ -222,7 +222,7 @@
   function updateMovieVisibility() {
     if (!movieMesh) return;
     // A black video texture before decoding must NEVER appear as a black panel.
-    const canDraw = isStarted && targetFound && hasVideoFrame && !video.paused;
+    const canDraw = isStarted && targetFound && hasVideoFrame && !video.paused && !video.seeking;
     movieMesh.visible = canDraw;
     if (canDraw) hint.hidden = true;
   }
@@ -253,6 +253,15 @@
   video.addEventListener('loadeddata', () => {
     // This also helps browsers that deliver a first image before video time advances.
     if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) onVideoFrame();
+  });
+  // Do not display a stale frame while Safari seeks back to the start.
+  video.addEventListener('seeking', () => {
+    hasVideoFrame = false;
+    updateMovieVisibility();
+  });
+  video.addEventListener('seeked', () => {
+    hasVideoFrame = false;
+    updateMovieVisibility();
   });
   video.addEventListener('error', () => {
     console.error('MP4 error:', video.error?.code, video.currentSrc);
@@ -335,17 +344,42 @@
     return mindar;
   }
 
+  // Restart every time a new image-tracking session recognizes the painting.
+  // The silent video is pre-warmed by the Start AR tap for Safari autoplay,
+  // but is invisible until tracking. Seeking here prevents mid-video starts.
+  function restartVideoAtZero() {
+    const seekAndPlay = () => {
+      if (!targetFound) return;
+      try {
+        video.currentTime = 0;
+        lastFrameTime = -1;
+      } catch (error) {
+        console.warn('Could not seek to the first frame:', error);
+      }
+      void playVideo();
+    };
+
+    if (video.readyState >= HTMLMediaElement.HAVE_METADATA) {
+      seekAndPlay();
+    } else {
+      // Safari can report the target before the MP4 metadata is available.
+      video.addEventListener('loadedmetadata', seekAndPlay, { once: true });
+      void playVideo();
+    }
+  }
+
   function foundTarget() {
     clearTimeout(lostTimer);
     clearTimeout(waitTimer);
-    if (targetFound) return;
+    if (targetFound) return; // Ignore duplicate tracking events.
     targetFound = true;
-    updateMovieVisibility();
-    if (movieMesh?.visible) return;
 
-    showHint('Painting detected. Starting animation...');
-    // Video should already be playing from the Start AR touch.
-    if (video.paused) void playVideo();
+    // Hide the previous video frame until the seek has finished.
+    hasVideoFrame = false;
+    lastFrameTime = -1;
+    updateMovieVisibility();
+    showHint('Painting found. Starting animation from 0:00...');
+    restartVideoAtZero();
 
     waitTimer = setTimeout(() => {
       if (isStarted && targetFound && !movieMesh?.visible) {
@@ -412,8 +446,10 @@
       hud.style.display = 'block';
       showHint('Point the rear camera at the Silent Colors painting.');
       if (targetFound) {
+        // If tracking finished before the camera UI was ready, restart now.
+        hasVideoFrame = false;
         updateMovieVisibility();
-        if (video.paused) void playVideo();
+        restartVideoAtZero();
         if (!movieMesh?.visible) {
           showHint('Painting detected. Loading animation...');
           waitTimer = setTimeout(() => {
