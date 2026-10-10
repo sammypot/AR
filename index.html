@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#061b32">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Silent Colors AR - Version 10</title>
+<title>Silent Colors AR - Version 11</title>
 
 <!-- Three.js and MindAR: loaded from the internet when this page opens. -->
 <script type="importmap">
@@ -100,7 +100,7 @@
   <!-- Same file path as your existing GitHub repository.
        Use H.264 MP4 (yuv420p) for iPhone Safari; muted autoplay is supported. -->
   <video id="arVideo" muted autoplay loop playsinline webkit-playsinline preload="auto" crossorigin="anonymous">
-    <source src="./assets/silent-colors-video.mp4?v=10" type="video/mp4">
+    <source src="./assets/silent-colors-video.mp4?v=11" type="video/mp4">
   </video>
 
   <main id="welcome">
@@ -111,7 +111,7 @@
       <button id="startBtn" type="button" disabled>Loading AR...</button>
       <div id="loadStatus" aria-live="polite">Loading image tracking...</div>
       <div id="details" hidden></div>
-      <small id="version">Version 10 - restart animation at 0:00 on every image detection</small>
+      <small id="version">Version 11 - larger floating animation</small>
     </div>
   </main>
 
@@ -132,7 +132,7 @@
   const hint = $('hint');
   const video = $('arVideo');
 
- // POSITION SETTINGS: relative to the recognized image, not the phone screen.
+  // POSITION SETTINGS: relative to the recognized image, not the phone screen.
   // MindAR uses 1.0 as the target image width.
   const FLOAT_WIDTH = 0.85;       // EDIT THIS: 0.48 = small, 0.85 = large, 1.00 = extra large
   const GAP_FROM_TARGET = 0.04;   // close to the painting, without covering it
@@ -146,7 +146,7 @@
 
   const TARGETS_FILE = './targets.mind';
   const TARGET_IMAGE_FILE = './assets/silent-colors-target.jpg';
-  const VIDEO_FILE = './assets/silent-colors-video.mp4?v=10';
+  const VIDEO_FILE = './assets/silent-colors-video.mp4?v=11';
 
   let THREE, MindARThree, mindar, anchor, movieMesh, movieTexture;
   let isStarting = false, isStarted = false, targetFound = false;
