@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>Silent Colors AR</title>
+<script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+<style>
+html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#081b36;font-family:Arial,sans-serif}
+/* Never use display:none on the A-Frame scene: it must initialize at full size. */
+#arScene{position:fixed!important;inset:0;width:100%!important;height:100%!important;z-index:1}
+#arScene canvas{display:block!important}
+#startScreen{position:fixed;inset:0;z-index:50;display:flex;flex-direction:column;align-items:center;justify-content:center;box-sizing:border-box;padding:24px;text-align:center;background:#081b36;color:white;overflow:auto}
+#startScreen img{width:min(62vw,290px);max-height:40vh;object-fit:contain;border-radius:12px}
+h1{font-size:28px;margin:16px 0 8px}p{line-height:1.5;max-width:410px}
+button{padding:15px 28px;border:0;border-radius:12px;background:#fff;color:#082449;font-size:19px;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.6}
+#status{margin-top:15px;font-size:14px;max-width:450px;overflow-wrap:anywhere;line-height:1.5}
+#hud{display:none;position:fixed;top:env(safe-area-inset-top,12px);left:12px;right:12px;z-index:40;pointer-events:none;color:#fff;text-align:center}
+#hint{display:inline-block;background:rgba(0,0,0,.65);padding:12px 16px;border-radius:10px;font-size:14px}
+#retry{display:none;position:fixed;bottom:calc(env(safe-area-inset-bottom,0px) + 18px);left:50%;transform:translateX(-50%);z-index:45}
+</style>
+</head>
+<body>
+<a-scene id="arScene"
+ mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; uiLoading: no; uiScanning: no; uiError: no;"
+ embedded renderer="colorManagement: true; antialias: true; alpha: true"
+ vr-mode-ui="enabled: false" device-orientation-permission-ui="enabled: false">
+ <a-assets timeout="20000">
+  <video id="arVideo" src="./assets/silent-colors-video.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+ </a-assets>
+ <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+ <a-entity id="target" mindar-image-target="targetIndex: 0">
+  <a-video src="#arVideo" position="0 0 0.01" width="1" height="1.23" material="shader: flat; side: double"></a-video>
+ </a-entity>
+</a-scene>
+<div id="startScreen">
+ <img src="./assets/silent-colors-target.jpg" alt="Silent Colors painting">
+ <h1>Silent Colors AR</h1>
+ <p>Tap Start AR and point your back camera at the painting to play the video.</p>
+ <button id="startButton">Start AR</button>
+ <div id="status">Internet is required to load the AR libraries.</div>
+</div>
+<div id="hud"><span id="hint">Point the camera at the Silent Colors painting</span></div>
+<button id="retry" onclick="location.reload()">Reload AR</button>
+<script>
+const scene=document.getElementById('arScene');
+const screen=document.getElementById('startScreen');
+const btn=document.getElementById('startButton');
+const status=document.getElementById('status');
+const hud=document.getElementById('hud');
+const hint=document.getElementById('hint');
+const retry=document.getElementById('retry');
+const target=document.getElementById('target');
+const video=document.getElementById('arVideo');
+const delay=ms=>new Promise(r=>setTimeout(r,ms));
+function waitLoaded(el,timeout=20000){
+ if(el.hasLoaded)return Promise.resolve();
+ return new Promise((resolve,reject)=>{
+  const timer=setTimeout(()=>{el.removeEventListener('loaded',done);reject(new Error('AR scene did not finish loading. Check your internet connection and files.'));},timeout);
+  function done(){clearTimeout(timer);resolve();}
+  el.addEventListener('loaded',done,{once:true});
+ });
+}
+window.addEventListener('error',e=>{console.error('Page error:',e.message);if(screen.style.display!=='none')status.textContent='Page error: '+e.message;});
+btn.addEventListener('click',async()=>{
+ btn.disabled=true;
+ status.textContent='Loading AR scene...';
+ try{
+  if(!window.AFRAME)throw new Error('A-Frame library did not load.');
+  await waitLoaded(scene);
+  const system=scene.systems['mindar-image-system'];
+  if(!system)throw new Error('MindAR library did not initialize.');
+  status.textContent='Opening camera and loading image target...';
+  // iOS allows video playback only after a user gesture; prime muted playback.
+  try{await video.play();video.pause();video.currentTime=0;}catch(e){console.warn('Video priming:',e);}
+  await system.start();
+  // MindAR adds its own camera video element; never hide its scene.
+  screen.style.display='none';
+  hud.style.display='block';
+  retry.style.display='block';
+  hint.textContent='Point the camera at the Silent Colors painting';
+ }catch(e){
+  console.error('AR start error',e);
+  status.textContent='AR error: '+(e?.message||String(e))+' — Check targets.mind, camera permission, and internet.';
+  btn.disabled=false;
+ }
+});
+target.addEventListener('targetFound',async()=>{
+ hint.textContent='Painting detected — playing video';
+ try{await video.play();}catch(e){hint.textContent='Painting found, but video could not play: '+e.message;}
+});
+target.addEventListener('targetLost',()=>{video.pause();hint.textContent='Point the camera at the Silent Colors painting';});
+</script>
+</body>
+</html>
