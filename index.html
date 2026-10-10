@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Silent Colors AR</title>
+  <script src="https://aframe.io/releases/1.6.0/aframe.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-aframe.prod.js"></script>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; background: #081b36; }
+    #startScreen { position: fixed; inset: 0; z-index: 20; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 24px; text-align: center; background: #081b36; color: white; }
+    #startScreen img { width: min(70vw, 360px); border-radius: 18px; margin-bottom: 18px; }
+    #startButton { padding: 16px 34px; border: none; border-radius: 14px; font-size: 22px; font-weight: bold; background: white; color: #082449; cursor: pointer; }
+    #status { margin-top: 16px; font-size: 15px; opacity: 0.8; max-width: 420px; }
+    #arScene { display: none; }
+  </style>
+</head>
+<body>
+  <div id="startScreen">
+    <img src="./assets/silent-colors-target.jpg" alt="Silent Colors artwork" />
+    <h1>Silent Colors AR</h1>
+    <p>Tap Start AR, allow camera access, then point your phone at the painting. The video will appear over the artwork.</p>
+    <button id="startButton">Start AR</button>
+    <div id="status">Make sure your internet connection is active.</div>
+  </div>
+
+  <a-scene
+    id="arScene"
+    mindar-image="imageTargetSrc: ./targets.mind; autoStart: false; filterMinCF: 0.0001; filterBeta: 0.001;"
+    embedded
+    color-space="sRGB"
+    renderer="colorManagement: true; physicallyCorrectLights: true;"
+    vr-mode-ui="enabled: false"
+    device-orientation-permission-ui="enabled: false">
+
+    <a-assets>
+      <video id="arVideo" src="./assets/silent-colors-video.mp4" preload="auto" loop muted playsinline webkit-playsinline crossorigin="anonymous"></video>
+    </a-assets>
+
+    <a-camera position="0 0 0" look-controls="enabled: false"></a-camera>
+
+    <a-entity id="target" mindar-image-target="targetIndex: 0">
+      <a-video id="videoPlane" src="#arVideo" position="0 0 0.01" width="1" height="1.23"></a-video>
+    </a-entity>
+  </a-scene>
+
+  <script>
+    const startButton = document.getElementById("startButton");
+    const startScreen = document.getElementById("startScreen");
+    const status = document.getElementById("status");
+    const scene = document.querySelector("#arScene");
+    const target = document.querySelector("#target");
+    const video = document.querySelector("#arVideo");
+
+    startButton.addEventListener("click", async () => {
+      startButton.disabled = true;
+      status.textContent = "Starting camera...";
+      try {
+        scene.style.display = "block";
+        const mindarSystem = scene.systems["mindar-image-system"];
+        await mindarSystem.start();
+        startScreen.style.display = "none";
+      } catch (error) {
+        console.error(error);
+        status.textContent = "Could not start AR. Please allow camera access and reload the page.";
+        startButton.disabled = false;
+      }
+    });
+
+    target.addEventListener("targetFound", async () => {
+      try {
+        video.currentTime = 0;
+        await video.play();
+      } catch (err) {
+        console.error("Video play error:", err);
+      }
+    });
+
+    target.addEventListener("targetLost", () => {
+      video.pause();
+    });
+  </script>
+</body>
+</html>
