@@ -1,56 +1,42 @@
-SILENT COLORS - NEW iPHONE-FRIENDLIER AR BUILD
-==============================================
-For GitHub repository: https://github.com/sammypot/AR
-Live site after publishing: https://sammypot.github.io/AR/
+SILENT COLORS AR - FIXED LIBRARY VERSION
 
-IMPORTANT
-- This package replaces the old A-Frame page with the official MindARThree
-  rendering workflow. It shows real camera video behind a transparent 3D
-  overlay, starts your video when the painting is found, pauses on loss, and
-  provides camera diagnostics if Safari shows a black screen.
-- We cannot run a physical iPhone camera/image-target test from here.
-- Keep your existing targets.mind file in the ROOT of your GitHub repository.
-  This package does NOT contain targets.mind. You must use the .mind file
-  compiled from the exact painting image assets/silent-colors-target.jpg.
+IMPORTANT FIX:
+- Previous page imported Three.js r160, which can conflict with MindAR 1.2.5.
+- This page uses Three.js r147 and MindAR 1.2.5 on the same CDN.
+- The library is dynamically loaded: failed imports show the real error instead of breaking Start AR.
 
-SIMPLEST UPDATE ON IPHONE
-1. Download index.html separately from the assistant response.
-2. In Safari, open github.com/sammypot/AR.
-3. In the repository ROOT, tap Add file > Upload files. Select index.html.
-   Upload it to the ROOT, not inside assets. Commit the update.
-4. If GitHub says the file already exists, choose to replace/overwrite it.
-   If uploading on iPhone makes a duplicate filename, ensure the final
-   ROOT filename is EXACTLY index.html (not index (1).html).
-5. Your repository should have:
-   index.html
-   targets.mind
-   assets/silent-colors-target.jpg
-   assets/silent-colors-video.mp4
-6. Open Settings > Pages and keep main, / (root), and HTTPS.
-7. Wait 1-3 minutes; open https://sammypot.github.io/AR/?v=3
-   The ?v=3 avoids reusing a stale cached HTML page.
-8. Tap Start AR, allow camera, point phone at the original painting.
+UPLOAD USING IPHONE:
+1. Unzip these files in the iPhone Files app.
+2. Open github.com/sammypot/AR.
+3. Upload the new index.html to the top/root level and REPLACE existing index.html.
+   Also upload alternate.html into the same root folder (optional fallback).
+4. Keep the EXISTING targets.mind file at the root; it is not in this ZIP.
+5. Keep assets/silent-colors-target.jpg and assets/silent-colors-video.mp4 in assets folder.
+6. Optionally upload camera-test.html to the root.
+7. Commit the changes, wait for GitHub Pages deployment, then open:
+   https://sammypot.github.io/AR/?v=4
 
-IF THE CAMERA IS STILL BLACK
-- Tap 'Test camera' on the AR screen, or open
-  https://sammypot.github.io/AR/camera-test.html
-  (if you uploaded the included camera-test.html too).
-- If the plain camera test shows the room, the camera works and the issue
-  is AR rendering or the phone/browser GPU.
-- If the plain camera test is also black, check Safari permission,
-  iPhone camera use by other apps, and try reloading.
-- Screenshot the STATUS/DIAGNOSTICS text and send it for further diagnosis.
+Expected repository:
+  index.html
+  alternate.html   <-- alternative library server if the primary CDN fails
+  targets.mind  <-- IMPORTANT: your own compiled painting target file
+  camera-test.html
+  assets/
+    silent-colors-target.jpg
+    silent-colors-video.mp4
 
-IF CAMERA WORKS BUT VIDEO DOES NOT APPEAR
-- Ensure targets.mind is compiled using EXACTLY the target JPG.
-- Ensure .mind is in ROOT, while MP4/JPG are inside assets/.
-- Move camera slowly and include most of the artwork in the frame.
-- If iPhone stops video autoplay, tap the visible Play video button.
-- Tap Enable sound after the image is detected to hear the soundtrack.
+TROUBLESHOOTING:
+- If AR library fails: the page now displays the exact import error.
+- Tap Test back camera. If the live room is visible, camera access works.
+- Tap Check uploaded files. All three file checks should report OK.
+- If camera appears but painting is not detected, regenerate targets.mind from the same JPG using MindAR's official image target compiler.
+- In iPhone Safari, automatic sound is blocked until user interaction. Autoplay starts muted.
+- The page uses internet for MindAR and Three.js from jsdelivr CDN.
 
-PRODUCTION NOTES
-- Uses Three.js 0.160 + mind-ar 1.2.5 from public CDNs.
-- Hosted on GitHub Pages, no paid license needed.
-- Secure HTTPS and internet access needed to load the page.
-- Video is 720x884 H.264 MP4 with fast-start metadata; ~7.8 MB.
-- To use a QR code, the included PNG encodes the GitHub Pages URL.
+IMPORTANT: This package has been tested for HTML/JS syntax and ZIP integrity,
+but physical camera tracking must be tested on the actual phone.
+
+ALTERNATE SERVER:
+If the homepage cannot load the AR library, tap Try alternate library server,
+or open https://sammypot.github.io/AR/alternate.html.
+This requires alternate.html uploaded next to index.html.
