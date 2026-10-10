@@ -137,7 +137,7 @@
   const FLOAT_WIDTH = 1;       // EDIT THIS: 0.48 = small, 0.85 = large, 1.00 = extra large
   const GAP_FROM_TARGET = 0;   // close to the painting, without covering it
   const FLOAT_SIDE = 'left';      // change to 'right' if preferred
-  const MAX_HEIGHT_RATIO = 2.35; // EDIT THIS TOO: max height relative to painting height
+  const MAX_HEIGHT_RATIO = 1.60; // EDIT THIS TOO: max height relative to painting height
 
   // Remove the MP4's BLACK background (a regular MP4 contains no transparency).
   // Lower CUT_DARK to preserve darker animation details; raise to hide dark borders.
@@ -268,26 +268,26 @@
     if (targetFound && isStarted) showHint(mediaErrorDescription());
   });
 
-  function placeAnimation() {
-    if (!movieMesh) return;
+ function placeAnimation() {
+  if (!movieMesh) return;
 
-    const targetAspect = artwork.naturalWidth && artwork.naturalHeight
-      ? artwork.naturalHeight / artwork.naturalWidth : 1;
-    const movieAspect = video.videoWidth && video.videoHeight
-      ? video.videoWidth / video.videoHeight : 1;
+  const targetAspect = artwork.naturalWidth && artwork.naturalHeight
+    ? artwork.naturalHeight / artwork.naturalWidth : 1;
+  const movieAspect = video.videoWidth && video.videoHeight
+    ? video.videoWidth / video.videoHeight : 1;
 
-    const maximumHeight = Math.max(0.3, targetAspect * MAX_HEIGHT_RATIO);
-    const width = Math.min(FLOAT_WIDTH, maximumHeight * movieAspect);
-    const height = width / movieAspect;
-    const side = FLOAT_SIDE === 'right' ? 1 : -1;
+  const maximumHeight = Math.max(0.3, targetAspect * MAX_HEIGHT_RATIO);
+  const width = Math.min(FLOAT_WIDTH, maximumHeight * movieAspect);
+  const height = width / movieAspect;
 
-    movieMesh.scale.set(width, height, 1);
-    movieMesh.position.set(
-      side * (0.5 + GAP_FROM_TARGET + width / 2),
-      -targetAspect / 2 + height / 2 + 0.04,
-      0.055
-    );
-  }
+  movieMesh.scale.set(width, height, 1);
+
+  movieMesh.position.set(
+    0,      // center of painting
+    0,      // center of painting
+    0.055   // slight front offset
+  );
+}
 
   video.addEventListener('loadedmetadata', placeAnimation);
   artwork.addEventListener('load', placeAnimation);
